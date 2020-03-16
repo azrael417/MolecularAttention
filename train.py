@@ -147,37 +147,25 @@ def run_eval(model, train_loader, ordinal=False, classifacation=False, enseml=Tr
         valuess = []
         model.eval()
 
-        if pb and enseml:
-            first_range = tqdm(range(50), desc='ensembl runs')
-        else:
-            first_range = range(1)
-        for _ in first_range:
-            predss = []
-            valuess = []
-            if pb and not enseml:
-                second_range = tqdm(enumerate(train_loader))
+
+        for i, (drugfeats, value) in tqdm(enumerate(train_loader)):
+            drugfeats, value = drugfeats.to(device), value.to(device)
+            pred, attn = model(drugfeats)
+
+            if classifacation:
+                mse_loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, value).mean()
+            elif mae:
+                mse_loss = torch.nn.functional.l1_loss(pred, value).mean()
             else:
-                second_range = enumerate(train_loader)
-            for i, (drugfeats, value) in second_range:
-                drugfeats, value = drugfeats.to(device), value.to(device)
-                pred, attn = model(drugfeats)
+                mse_loss = torch.nn.functional.mse_loss(pred, value).mean()
+            test_loss += mse_loss.item()
+            test_iters += 1
+            tracker.track_metric(pred.detach().cpu().numpy(), value.detach().cpu().numpy())
+            valuess.append(value.cpu().detach().numpy().flatten())
+            predss.append(pred.detach().cpu().numpy().flatten())
 
-                if classifacation:
-                    mse_loss = torch.nn.functional.binary_cross_entropy_with_logits(pred, value).mean()
-                elif mae:
-                    mse_loss = torch.nn.functional.l1_loss(pred, value).mean()
-                else:
-                    mse_loss = torch.nn.functional.mse_loss(pred, value).mean()
-                test_loss += mse_loss.item()
-                test_iters += 1
-                tracker.track_metric(pred.detach().cpu().numpy(), value.detach().cpu().numpy())
-                valuess.append(value.cpu().detach().numpy().flatten())
-                predss.append(pred.detach().cpu().numpy().flatten())
-
-            preds.append(np.concatenate(predss, axis=0))
-            values.append(np.concatenate(valuess, axis=0))
-        preds = np.stack(preds)
-        values = np.stack(values)
+        preds = np.concatenate(predss, axis=0).flatten()
+        values = np.concatenate(values, axis=0)
         print(preds.shape, values.shape)
         if output_preds is not None:
             print(preds.shape)
