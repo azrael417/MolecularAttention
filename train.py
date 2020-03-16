@@ -412,6 +412,7 @@ def load_data_models(fname, random_seed, workers, batch_size, pname='logp', retu
         model = imagemodel.ImageModel(nheads=nheads, outs=tasks, classifacation=classifacation, dr=dropout,
                                       intermediate_rep=intermediate_rep, linear_layers=depth, pretrain=pretrain)
 
+    model.load_state_dict(torch.load('saved_models/adrp_classif.pt')['model_state'])
     if return_datasets:
         return train_dataset, test_dataset, model
     else:

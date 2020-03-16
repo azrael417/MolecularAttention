@@ -121,6 +121,7 @@ class PytorchHistory:
             self.true_tracker = np.nan_to_num(self.true_tracker, nan=0, posinf=0, neginf=0)
             self.pred_tracker = np.nan_to_num(self.pred_tracker, nan=0, posinf=0, neginf=0)
             r2 = self.metric(self.true_tracker, self.pred_tracker)
+            print("train" if train else "test", sklearn.metrics.confusion_matrix(self.true_tracker, self.pred_tracker))
             self.true_tracker, self.pred_tracker = [], []
         if train:
             self.train_r2.append(r2)
