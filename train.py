@@ -138,26 +138,26 @@ def run_eval(model, train_loader, ordinal=False, classifacation=False, enseml=Tr
         valuess = []
         model.eval()
 
-        for i in range(25 if enseml else 1):
-            for i, (drugfeats, value) in enumerate(train_loader):
-                drugfeats, value = drugfeats.to(device), value.to(device)
-                pred, attn = model(drugfeats)
+        preds_out = []
+        values_out = []
 
-                mse_loss = torch.nn.functional.l1_loss(pred, value).mean()
-                test_loss += mse_loss.item()
-                test_iters += 1
-                tracker.track_metric(pred.detach().cpu().numpy(), value.detach().cpu().numpy())
-                valuess.append(value.cpu().detach().numpy().flatten())
-                predss.append(pred.detach().cpu().numpy().flatten())
+        for i, (drugfeats, value) in enumerate(train_loader):
+            drugfeats, value = drugfeats.to(device), value.to(device)
+            pred, attn = model(drugfeats)
 
-            preds.append(np.concatenate(predss, axis=0))
-            values.append(np.concatenate(valuess, axis=0))
-        preds = np.stack(preds)
-        values = np.stack(values)
-        print(preds.shape, values.shape)
-        preds = np.mean(preds, axis=0)
-        values = np.mean(values, axis=0)
+            mse_loss = torch.nn.functional.l1_loss(pred, value).mean()
+            test_loss += mse_loss.item()
+            test_iters += 1
+            tracker.track_metric(pred.detach().cpu().numpy(), value.detach().cpu().numpy())
+            valuess.append(value.cpu().detach().numpy().flatten())
+            values_out.append(value.cpu().detach().numpy().flatten())
 
+            predss.append(pred.detach().cpu().numpy().flatten())
+            preds_out.append(pred.detach().cpu().numpy().flatten())
+
+        preds = np.concatenate(predss, axis=0).flatten()
+        values = np.concatenate(valuess, axis=0).flatten()
+        np.save("preds.npy", np.stack([preds,values], axis=0))
         if ordinal:
             preds, values = np.round(preds), np.round(values)
             incorrect = 0
