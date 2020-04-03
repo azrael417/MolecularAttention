@@ -12,6 +12,7 @@ from tqdm import tqdm
 import torchvision.transforms.functional as TF
 import torchvision.transforms as TT
 from torch.utils.data import DataLoader
+from features.utils import Invert
 
 if torch.cuda.is_available():
     import torch.backends.cudnn
@@ -20,7 +21,7 @@ if torch.cuda.is_available():
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-file = '/Users/austin/adpr.pt'
+file = 'saved_models/adpr.pt'
 args = torch.load(file, map_location=torch.device('cpu'))['args']
 
 # dset, _, model = load_data_models("moses/test_scaffolds.smi", 32, 1, 1, 'weight', nheads=8, dropout=0.1, return_datasets=True, precompute_frame="moses/test_scaffolds_weight.npy", intermediate_rep=128)
