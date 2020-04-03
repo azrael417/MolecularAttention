@@ -13,7 +13,7 @@ from torch.optim.lr_scheduler import ReduceLROnPlateau, CosineAnnealingWarmResta
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from features.datasets import ImageDataset, funcs, get_properety_function, ImageDatasetPreLoaded
+from features.datasets import ImageDatasetInfer, funcs, get_properety_function, ImageDatasetPreLoaded
 from features.generateFeatures import MORDRED_SIZE
 from metrics import trackers
 from models import imagemodel
@@ -338,20 +338,22 @@ def load_data_models(fname, random_seed, workers, batch_size, pname='logp', retu
             smiles.append(g)
     del df
 
+    shuffle_on_injest = (not return_datasets)
+
     if cvs is not None:
         if classifacation and tasks == 1 and precompute_frame is not None:
             ts = np.load(precompute_frame)
-            kfold = StratifiedKFold(random_state=random_seed, n_splits=5, shuffle=True)
+            kfold = StratifiedKFold(random_state=random_seed, n_splits=5, shuffle=shuffle_on_injest)
             train_idx, test_idx = list(kfold.split(list(range(len(smiles))), ts.flatten()))[cvs]
         else:
-            kfold = KFold(random_state=random_seed, n_splits=5, shuffle=True)
+            kfold = KFold(random_state=random_seed, n_splits=5, shuffle=shuffle_on_injest)
             train_idx, test_idx = list(kfold.split(list(range(len(smiles)))))[cvs]
         train_smiles = [smiles[i] for i in train_idx]
         test_smiles = [smiles[i] for i in test_idx]
     else:
         train_idx, test_idx, train_smiles, test_smiles = train_test_split(list(range(len(smiles))), smiles,
-                                                                          test_size=0.2, random_state=random_seed,
-                                                                          shuffle=True)
+                                                                          test_size=0.05, random_state=random_seed,
+                                                                          shuffle=shuffle_on_injest)
     if mask is not None:
         print("using mask")
         mask = np.load(mask)
@@ -362,9 +364,11 @@ def load_data_models(fname, random_seed, workers, batch_size, pname='logp', retu
         mask = False
     if precomputed_images is not None:
         precomputed_images = np.load(precomputed_images)
+        assert (precomputed_images.shape[0] == len(smiles))
         train_images = precomputed_images[train_idx]
         test_images = precomputed_images[test_idx]
         precomputed_images = True
+
     else:
         precomputed_images = False
     if precompute_frame is not None:
@@ -412,7 +416,7 @@ def load_data_models(fname, random_seed, workers, batch_size, pname='logp', retu
         model = imagemodel.ImageModel(nheads=nheads, outs=tasks, classifacation=classifacation, dr=dropout,
                                       intermediate_rep=intermediate_rep, linear_layers=depth, pretrain=pretrain)
 
-    model.load_state_dict(torch.load('saved_models/adrp_classif.pt')['model_state'])
+    # model.load_state_dict(torch.load('saved_models/adrp_classif.pt')['model_state'])
     if return_datasets:
         return train_dataset, test_dataset, model
     else:

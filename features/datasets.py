@@ -166,6 +166,7 @@ class ImageDatasetPreLoaded(Dataset):
             return image, vec
 
         else:
+            print(self.smiles[item])
             if self.use_mask:
                 assert(False)
             mol = Chem.MolFromSmiles(self.smiles[item])
@@ -184,8 +185,8 @@ class ImageDatasetPreLoaded(Dataset):
         return len(self.smiles)
 
 
-class ImageDataset(Dataset):
-    def __init__(self, smiles, property_func=logps, cache=True, values=1):
+class ImageDatasetInfer(Dataset):
+    def __init__(self, smiles, property_func=logps, cache=False, values=1):
         self.smiles = smiles
         self.property_func = property_func
         self.cache = cache
@@ -196,21 +197,24 @@ class ImageDataset(Dataset):
         if self.cache and self.smiles[item] in self.data_cache:
             return self.data_cache[self.smiles[item]]
         else:
-            mol = Chem.MolFromSmiles(self.smiles[item])
-            image = smiles_to_image(mol)
-            property = self.property_func(mol)
-
-            # TODO align property
-            if self.values == 1:
-                if property is None:
-                    property = -1.0
-                property = torch.FloatTensor([property]).view((1))
-            else:
-                property = torch.from_numpy(np.nan_to_num(property, nan=0, posinf=0, neginf=0)).float()
-
-            if self.cache:
-                self.data_cache[self.smiles[item]] = (image, property)
-            return image, property
+            try:
+                mol     = Chem.MolFromSmiles(self.smiles[item])
+                image =     smiles_to_image(mol)
+            except:
+                image = np.zeros((3,128, 128, 3))
+            # property = self.property_func(mol)
+            #
+            # # TODO align property
+            # if self.values == 1:
+            #     if property is None:
+            #         property = -1.0
+            #     property = torch.FloatTensor([property]).view((1))
+            # else:
+            #     property = torch.from_numpy(np.nan_to_num(property, nan=0, posinf=0, neginf=0)).float()
+            #
+            # if self.cache:
+            #     self.data_cache[self.smiles[item]] = (image, property)
+            return image, self.smiles[item]
 
     def __len__(self):
         return len(self.smiles)

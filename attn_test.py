@@ -47,12 +47,12 @@ if __name__ == '__main__':
     my_cmap[:, -1] = np.linspace(0, 1, cmap.N)
     my_cmap = ListedColormap(my_cmap)
 
-    file = 'saved_models/moses_hacceptor.pt'
+    file = '/Users/austin/adpr.pt'
     args = torch.load(file, map_location=torch.device('cpu'))['args']
 
     # dset, _, model = load_data_models("moses/test_scaffolds.smi", 32, 1, 1, 'weight', nheads=8, dropout=0.1, return_datasets=True, precompute_frame="moses/test_scaffolds_weight.npy", intermediate_rep=128)
-    dset, _, model = load_data_models("moses/test_scaffolds.smi", args.r, args.w, args.b, args.p, nheads=args.nheads,
-                                                        precompute_frame="moses/test_scaffold_hacceptor.npy",
+    dset, _, model = load_data_models("/Users/austin/adrp_adpr_data/smiles.smi", args.r, args.w, args.b, args.p, nheads=args.nheads,
+                                                        precompute_frame="/Users/austin/adrp_adpr_data/adrp_adpr_pocket1_values3.npy",
                                                         imputer_pickle=args.imputer_pickle,
                                                         tasks=args.t, rotate=0,
                                                         classifacation=args.classifacation, ensembl=args.ensemble_eval,
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     # bads = find_bad_id(dset)
     # print(bads)
 
-    idx = 5423
+    idx = 32483-1
     imout, act = dset[idx]
     imout = TT.ToTensor()(TF.rotate(TT.ToPILImage()(imout), 65))
     # imout = TT.ToTensor()(TF.to_grayscale(TT.ToPILImage()(imout), 3))
@@ -89,7 +89,7 @@ if __name__ == '__main__':
     axs[1].imshow(np.transpose(image.detach().numpy(), (1, 2, 0)), interpolation='nearest')
     # plt.contourf(list(range(128)), list(range(128)), 1.0 - attn, cmap=my_cmap, levels=10)
     im = axs[1].imshow(np.transpose(attn, (1,2,0))[:,:,0], cmap='jet', alpha=0.5)
-    cax = fig.add_axes([0.27, 0.8, 0.5, 0.05])
+    cax = fig.add_axes([0.27, 0.1, 0.5, 0.05])
     fig.colorbar(im, cax=cax, orientation='horizontal')
     # plt.imshow(np.transpose(image.detach().numpy(), (1, 2, 0)), interpolation='nearest')
     # plt.imshow(np.transpose(attn.squeeze(0).numpy(), (1, 2, 0)), interpolation='nearest')
