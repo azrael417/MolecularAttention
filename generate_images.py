@@ -13,9 +13,9 @@ from features.utils import Invert
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', type=str, required=True)
+    parser.add_argument('-i', help='this takes the value csv, and retruns both the value csv and the header so they align in there are failures', type=str, required=True)
     parser.add_argument('-o', type=str, required=True)
-
+    parser.add_argument('-n', type=int, required=False, default=16)
     return parser.parse_args()
 
 
@@ -29,11 +29,11 @@ if __name__ == '__main__':
 
     images = []
 
-    smiles = pd.read_csv(args.i, header=None)
+    smiles = pd.read_csv(args.i)
     n = smiles.shape[0]
     smiles = list(smiles.iloc[:, 0])
     smiles = filter(lambda x: x is not None, map(lambda x: Chem.MolFromSmiles(x), smiles))
-    with multiprocessing.Pool(32) as pool:
+    with multiprocessing.Pool(args.n) as pool:
         smiles = pool.imap(get_image, smiles)
         for im in tqdm(smiles, total=n):
             images.append(im)
