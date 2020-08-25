@@ -29,7 +29,7 @@ args = torch.load(file, map_location=torch.device('cpu'))['args']
 
 smiles_file = ""
 trues = pd.read_csv(args_i.i)
-trues = trues.smiles.tolist()
+trues = trues.iloc[:, 0].tolist()
 
 values = np.zeros(len(trues))
 # dset, _, model = load_data_models("moses/test_scaffolds.smi", 32, 1, 1, 'weight', nheads=8, dropout=0.1, return_datasets=True, precompute_frame="moses/test_scaffolds_weight.npy", intermediate_rep=128)
