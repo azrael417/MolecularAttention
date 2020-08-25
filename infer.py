@@ -2,7 +2,7 @@ import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
-
+import numpy as np
 from features import datasets
 from train import load_data_models
 
@@ -27,10 +27,15 @@ device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 file = args_i.m
 args = torch.load(file, map_location=torch.device('cpu'))['args']
 
+smiles_file = ""
+trues = pd.read_csv(args_i.i)
+trues = trues.smiles.tolist()
+
+values = np.zeros(len(trues))
 # dset, _, model = load_data_models("moses/test_scaffolds.smi", 32, 1, 1, 'weight', nheads=8, dropout=0.1, return_datasets=True, precompute_frame="moses/test_scaffolds_weight.npy", intermediate_rep=128)
 _, _, model = load_data_models(args_i.i, args.r, args.w, args.b, args.p,
                                   nheads=args.nheads,
-                                  # precompute_frame="adrp_adpr_pocket1/adrp_adpr_pocket1_values3.npy",
+                                  precompute_frame=values,
                                   imputer_pickle=args.imputer_pickle,
                                   tasks=args.t, rotate=0,
                                   classifacation=args.classifacation, ensembl=args.ensemble_eval,
