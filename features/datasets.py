@@ -204,7 +204,7 @@ class ImageDatasetInfer(Dataset):
             except:
                 print("ERRORORORORO")
                 print(self.smiles[item])
-                image = torch.from_numpy(np.zeros((3,128, 128, 3)))
+                image = torch.from_numpy(np.zeros((3,128, 128)))
             # property = self.property_func(mol)
             #
             # # TODO align property

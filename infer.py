@@ -13,7 +13,7 @@ def get_args():
     parser.add_argument('-i', type=str, required=True)
     parser.add_argument('-o', type=str, required=True)
     parser.add_argument('-j', type=int, required=False, default=0)
-    parser.add_argument('-b', type=int, required=False, default=256)
+    parser.add_argument('-b', type=int, required=False, default=64)
     return parser.parse_args()
 
 if torch.cuda.is_available():
