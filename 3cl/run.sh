@@ -4,3 +4,5 @@ python train.py -pb --rotate --mae -p custom -t 1 \
   -o 3cl/model.pt -i 3cl/smiles.smi \
   --precomputed_images 3cl/images.npy --precomputed_values 3cl/values.npy \
    --no_pretrain
+
+python infer.py -i 3cl/smiles.smi -o out_infer.out -m 3cl/model.pt
