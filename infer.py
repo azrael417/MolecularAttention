@@ -48,7 +48,7 @@ model.eval()
 
 smiles_file = ""
 trues = pd.read_csv(args_i.i)
-trues = trues.smiles.tolist()
+trues = trues.iloc[:, 0].tolist()
 
 dset = datasets.ImageDatasetInfer(trues)
 train_loader = DataLoader(dset, num_workers=args_i.j, pin_memory=True, batch_size=args_i.b,
