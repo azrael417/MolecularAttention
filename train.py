@@ -342,10 +342,10 @@ def load_data_models(fname, random_seed, workers, batch_size, pname='logp', retu
 
     if cvs is not None:
         if classifacation and tasks == 1 and precompute_frame is not None:
-            if isinstance(str, precompute_frame):
-                ts = np.load(precompute_frame)
-            else:
-                ts = precompute_frame
+            # if isinstance(str, precompute_frame):
+            #     ts = np.load(precompute_frame)
+            # else:
+            ts  = precompute_frame
             kfold = StratifiedKFold(random_state=random_seed, n_splits=5, shuffle=shuffle_on_injest)
             train_idx, test_idx = list(kfold.split(list(range(len(smiles))), ts.flatten()))[cvs]
         else:
