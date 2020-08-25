@@ -202,10 +202,9 @@ class ImageDatasetInfer(Dataset):
                 mol     = Chem.MolFromSmiles(self.smiles[item])
                 image =     transforms.ToTensor()(Invert()(smiles_to_image(mol)))
             except:
-                print(self.smiles)
+                print("ERRORORORORO")
                 print(self.smiles[item])
-                print(image)
-                image = torch.from_file(np.zeros((3,128, 128, 3)))
+                image = torch.from_numpy(np.zeros((3,128, 128, 3)))
             # property = self.property_func(mol)
             #
             # # TODO align property
