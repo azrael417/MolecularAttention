@@ -199,8 +199,8 @@ class ImageDatasetInfer(Dataset):
             return self.data_cache[self.smiles[item]]
         else:
             try:
-                mol     = Chem.MolFromSmiles(self.smiles[item], sanitze=False)
-                image =     transforms.ToTensor()(Invert()(smiles_to_image(mol)))
+                # mol     = Chem.MolFromSmiles(, sanitze=False)
+                image =     transforms.ToTensor()(Invert()(smiles_to_image(self.smiles[item])))
             except:
                 print("ERRORORORORO")
                 print(self.smiles[item])
