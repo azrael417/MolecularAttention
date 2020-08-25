@@ -60,5 +60,5 @@ with torch.no_grad():
             im = im.to(device)
             pred, _ = model(im)
             pred = pred.cpu().numpy().flatten()
-            for smi in smile:
-                f.write(smi + "," + str(pred[i]) + "\n")
+            for j, smi in enumerate(smile):
+                f.write(smi + "," + str(pred[j]) + "\n")
