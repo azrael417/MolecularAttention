@@ -48,6 +48,7 @@ def smiles_to_image(mol, molSize=(128, 128), kekulize=True, mol_name='', mol_com
     drawer.DrawMolecule(mc)
     drawer.FinishDrawing()
     svg = drawer.GetDrawingText()
+    print(svg)
     image = Image.open(io.BytesIO(cairosvg.svg2png(bytestring=svg, parent_width=100, parent_height=100,
                                                    scale=1)))
     image.convert('RGB')
