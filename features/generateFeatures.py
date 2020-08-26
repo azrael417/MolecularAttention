@@ -43,7 +43,7 @@ def smiles_to_image(mol, molSize=(128, 128), kekulize=True, mol_name='', mol_com
             mc = Chem.Mol(mol.ToBinary())
     if not mc.GetNumConformers():
         rdDepictor.Compute2DCoords(mc)
-    print('mol', mol)
+    # print('mol', mol)
     drawer = rdMolDraw2D.MolDraw2DSVG(molSize[0], molSize[1])
     drawer.DrawMolecule(mc)
     drawer.FinishDrawing()
