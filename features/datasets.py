@@ -198,13 +198,13 @@ class ImageDatasetInfer(Dataset):
         if self.cache and self.smiles[item] in self.data_cache:
             return self.data_cache[self.smiles[item]]
         else:
-            # try:
+            try:
                 # mol     = Chem.MolFromSmiles(, sanitze=False)
-            image =     transforms.ToTensor()(Invert()(smiles_to_image(self.smiles[item], mol_computed=False)))
-            # except:
-            #     print("ERRORORORORO")
+                image =     transforms.ToTensor()(Invert()(smiles_to_image(self.smiles[item], mol_computed=False)))
+            except:
+                print("ERRORORORORO", self.smiles[item])
             #     print(self.smiles[item])
-            #     image = torch.from_numpy(np.zeros((3,128, 128))).float()
+                image = torch.from_numpy(np.zeros((3,128, 128))).float()
             # property = self.property_func(mol)
             #
             # # TODO align property
