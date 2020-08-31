@@ -58,13 +58,12 @@ class ImageModel(nn.Module):
         if self.nheads > 0:
             image = self.resnet181(features)
             attention = self.attention(image)
-            attention = nn.functional.softmax(attention.view(attention.shape[0], self.nheads, -1), dim=-1).view(attention.shape)
-            attention = attention.repeat([1, int(256 / self.nheads), 1, 1])
+            attention = nn.functional.softmax(attention.view(attention.shape[0], self.nheads, -1), dim=2).view(attention.shape)
             image = self.resnet182(image * attention)
             image = image.view(features.shape[0], -1)
         else:
             image = self.resnet181(features).view(features.shape[0], -1)
-            attention = torch.zeros((features.shape[0], 1, 1,1))
+            self.return_attn = False
 
         if self.return_attn:
             return self.prop_model(self.model(image)), attention

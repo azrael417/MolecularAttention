@@ -4,7 +4,6 @@ import multiprocessing
 import numpy as np
 import pandas as pd
 import torch
-from apex import amp
 from rdkit import Chem
 from sklearn import metrics
 from sklearn.model_selection import KFold, StratifiedKFold
@@ -109,7 +108,6 @@ def get_args():
     parser.add_argument('--cv', default=None, type=int, help='use CV for crossvalidation (1-5)')
     parser.add_argument('--width', default=256, type=int, help='rep size')
     parser.add_argument('--depth', default=2, type=int, help='rep size')
-    parser.add_argument('--amp', type=str, default='O0', choices=['O0', 'O1', 'O2', 'O3'])
     parser.add_argument('--bw', action='store_true')
     parser.add_argument('--mask', type=str, default=None)
     parser.add_argument('--no_pretrain', action='store_true')
@@ -247,8 +245,9 @@ def trainer(model, optimizer, train_loader, test_loader, epochs=5, tasks=1, clas
                 mse_loss = (mask * mse_loss).sum() / torch.sum(mask)
             else:
                 mse_loss = mse_loss.mean()
-            with amp.scale_loss(mse_loss, optimizer) as scaled_loss:
-                scaled_loss.backward()
+            #with amp.scale_loss(mse_loss, optimizer) as scaled_loss:
+            mse_loss.backward()
+            #scaled_loss.backward()
 
             torch.nn.utils.clip_grad_value_(model.parameters(), 10.0)
             optimizer.step()
@@ -319,8 +318,7 @@ def trainer(model, optimizer, train_loader, test_loader, epochs=5, tasks=1, clas
                         'history': tracker,
                         'nheads': heads,
                         'ntasks': tasks,
-                        'args': args,
-                        'amp': amp.state_dict()}, out)
+                        'args': args}, out)
         if earlystopping.early_stop:
             break
     return model, tracker
@@ -456,8 +454,6 @@ if __name__ == '__main__':
         exit()
     model.to(device)
     optimizer = args.optimizer(model.parameters(), lr=args.lr)
-    opt_level = args.amp
-    model, optimizer = amp.initialize(model, optimizer, opt_level=opt_level)
 
     print("Number of parameters:",
           sum([np.prod(p.size()) for p in filter(lambda p: p.requires_grad, model.parameters())]))

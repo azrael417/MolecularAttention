@@ -44,11 +44,10 @@ def smiles_to_image(mol, molSize=(128, 128), kekulize=True, mol_name='', mol_com
     if not mc.GetNumConformers():
         rdDepictor.Compute2DCoords(mc)
     # print('mol', mol)
-    drawer = rdMolDraw2D.MolDraw2DSVG(molSize[0], molSize[1])
+    drawer = rdMolDraw2D.MolDraw2DCairo(molSize[0], molSize[1])
     drawer.DrawMolecule(mc)
     drawer.FinishDrawing()
-    svg = drawer.GetDrawingText()
-    ios = cairosvg.svg2png(bytestring=svg, parent_width=100, parent_height=100,scale=1)
+    ios = drawer.GetDrawingText()
     ios = io.BytesIO(ios)
     image = Image.open(ios)
     image.convert('RGB')

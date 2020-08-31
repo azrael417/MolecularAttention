@@ -6,7 +6,7 @@ from torch.utils.data import Dataset
 import pickle
 from features.generateFeatures import smiles_to_image, smile_to_mordred
 from torchvision import transforms
-from features.utils import Invert
+#from features.utils import Invert
 
 from rdkit import Chem
 from rdkit import RDConfig
@@ -200,10 +200,9 @@ class ImageDatasetInfer(Dataset):
         else:
             try:
                 # mol     = Chem.MolFromSmiles(, sanitze=False)
-                image =     transforms.ToTensor()(Invert()(smiles_to_image(self.smiles[item], mol_computed=False)))
+                image =     transforms.ToTensor()(smiles_to_image(self.smiles[item], mol_computed=False))
             except:
-                print("ERRORORORORO", self.smiles[item])
-            #     print(self.smiles[item])
+                #print("ERRORORORORO", self.smiles[item])
                 image = torch.from_numpy(np.zeros((3,128, 128))).float()
             # property = self.property_func(mol)
             #
