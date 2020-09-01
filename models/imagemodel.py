@@ -3,12 +3,19 @@ import torchvision.models as models
 import torch
 class ImageModel(nn.Module):
 
-    def __init__(self, intermediate_rep=256,  nheads=1, outs=1, dr=0, classifacation=False, linear_layers=2, model_path=None, pretrain=True):
+    def __init__(self, intermediate_rep=256,  
+                nheads=1, outs=1, dr=0, classifacation=False, 
+                linear_layers=2, model_path=None, 
+                pretrain=True, quantize=False):
+                
         super(ImageModel, self).__init__()
         self.return_attn = True
         self.outs = outs
         self.nheads = nheads
-
+        if quantize:
+            self.quant = torch.quantization.QuantStub()
+        else:
+            self.quant = nn.Identity()
 
         if model_path is None:
             resnet18 = models.resnet101(pretrained=pretrain)
@@ -55,6 +62,7 @@ class ImageModel(nn.Module):
 
 
     def forward(self, features):
+        features = self.quant(features)
         if self.nheads > 0:
             image = self.resnet181(features)
             attention = self.attention(image)
