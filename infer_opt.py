@@ -99,20 +99,24 @@ model_fw = model_trt if args_i.trt is not None else model
 
 with torch.no_grad():
     with open(args_i.o, 'w') as f:
-        for i, (im, smile) in tqdm(enumerate(train_loader)):
+        with tqdm(total=len(train_loader), unit='samples') as pbar:
+            for i, (im, smile) in enumerate(train_loader):
+                
+                # convert to half if requested
+                if args_i.dtype == "fp16":
+                    im = im.half()
+                elif args_i.dtype == "int8":
+                    im = im.to(torch.int8)
 
-            # convert to half if requested
-            if args_i.dtype == "fp16":
-                im = im.half()
-            elif args_i.dtype == "int8":
-                im = im.to(torch.int8)
+                # upload data
+                im = im.to(device)
+                
+                # forward pass
+                pred = model_fw(im)
 
-            # upload data
-            im = im.to(device)
-
-            # forward pass
-            pred = model_fw(im)
-            
-            #pred = pred.cpu().numpy().flatten()
-            #for j, smi in enumerate(smile):
-            #    f.write(smi + "," + str(pred[j]) + "\n")
+                # update progress
+                pbar.update(args_i.b)
+                
+                #pred = pred.cpu().numpy().flatten()
+                #for j, smi in enumerate(smile):
+                #    f.write(smi + "," + str(pred[j]) + "\n")
