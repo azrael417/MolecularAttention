@@ -1,10 +1,17 @@
+import os
+import sys
 import pandas as pd
 import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import numpy as np
+
+# add the parent path too
+from pathlib import Path
+sys.path.append(Path('.').parent)
+
+# custom stuff
 from features import datasets
-#from train import load_data_models
 from models import imagemodel
 
 def get_args():
