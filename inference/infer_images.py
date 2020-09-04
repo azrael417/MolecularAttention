@@ -2,7 +2,7 @@ import os
 import sys
 import torch
 from torch.utils.data import DataLoader
-from tqdm import tqdm
+import time
 import numpy as np
 from argparse import ArgumentParser
 
@@ -47,6 +47,7 @@ def main(args_i):
                               pin_memory = True,
                               batch_size = args_i.b,
                               shuffle = False,
+                              drop_last = False,
                               worker_init_fn = shard_init_fn)
     
     # set model
@@ -103,9 +104,11 @@ def main(args_i):
     model_fw = model_trt if args_i.trt is not None else model
 
     # do the inference step
+    comm.barrier()
+    samples = 0
+    duration = time.time()
     with torch.no_grad():
-        with tqdm(unit='samples') as pbar:
-            for i, (im, identifier) in enumerate(train_loader):
+        for i, (im, identifier) in enumerate(train_loader):
                 
                 # convert to half if requested
                 if args_i.dtype == "fp16":
@@ -119,8 +122,22 @@ def main(args_i):
                 # forward pass
                 pred = model_fw(im)
 
-                # update progress
-                pbar.update(args_i.b)
+                # sample counter
+                samples += pred.shape[0]
+    
+    
+    # sync
+    comm.barrier()
+
+    # timer
+    duration = time.time() - duration
+
+    # update counter
+    samples_arr = np.array(samples_arr, dtype = np.int64)
+    samples = np.asscalar(comm.allreduce(samples_arr, op=MPI.SUM))
+    
+    if comm_rank == 0:
+        print(f"Processed {samples} samples in {duration}s, throughput {samples/duration} samples/s")
                 
 
 if __name__ == "__main__":
