@@ -55,6 +55,7 @@ class CompressedImageDataset(IterableDataset):
 
         # lock logic
         self.prefetch_lock = threading.Lock()
+        self.prefetch_done = threading.Event()
         self.prefetch_stop = False
         
         # start prefetch
@@ -81,14 +82,19 @@ class CompressedImageDataset(IterableDataset):
             with self.prefetch_lock:
                 if self.prefetch_stop:
                     return
+        self.prefetch_done.set()
+        return
             
     def __iter__(self):
         if not self.initialized:
             self._init_queue()
-
-        data = self.prefetch_queue.get()
-        for item in data:
-            folder = item[0]
-            identifier = item[1]
-            image = np.asarray(item[3]).copy()
-            yield image, identifier
+        
+        while not self.prefetch_done.is_set():
+            data = self.prefetch_queue.get()
+            for item in data:
+                folder = item[0]
+                identifier = item[1]
+                image = np.asarray(item[3]).copy()
+                yield image, identifier
+                
+            self.prefetch_queue.task_done()

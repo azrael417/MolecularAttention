@@ -104,6 +104,8 @@ def main(args_i):
     model_fw = model_trt if args_i.trt is not None else model
 
     # do the inference step
+    if comm_rank == 0:
+        print("Starting Inference")
     comm.barrier()
     samples = 0
     duration = time.time()
@@ -133,7 +135,7 @@ def main(args_i):
     duration = time.time() - duration
 
     # update counter
-    samples_arr = np.array(samples_arr, dtype = np.int64)
+    samples_arr = np.asarray(samples, dtype = np.int64)
     samples = np.asscalar(comm.allreduce(samples_arr, op=MPI.SUM))
     
     if comm_rank == 0:
