@@ -6,6 +6,11 @@ from tqdm import tqdm
 import numpy as np
 from argparse import ArgumentParser
 
+# MPI
+import mpi4py
+mpi4py.rc.initialize = False
+from mpi4py import MPI
+
 # add the parent path too
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,12 +21,28 @@ from models import imagemodel
 
 def main(args_i):
 
+    # MPI wireup
+    MPI.Init_thread()
+    
+    # get communicator: duplicate from comm world
+    comm = MPI.COMM_WORLD.Dup()
+    comm_size = comm.Get_size()
+    comm_rank = comm.Get_rank()
+
     # set device
     device = torch.device(f"cuda:{args_i.d}")
     torch.backends.cudnn.benchmark = True
 
     # get data loader
-    dset = CompressedImageDataset(args_i.i)
+    dset = CompressedImageDataset(args_i.i, max_prefetch_count = 3)
+
+    # shard dataset
+    totalsize = len(dset)
+    shardsize = int(np.ceil(totalsize / comm_size))
+    dset.start = comm_rank * shardsize
+    dset.end = min([dset.start + shardsize, totalsize])
+
+    # create train loader
     train_loader = DataLoader(dset, num_workers = args_i.j,
                               pin_memory = True,
                               batch_size = args_i.b,
@@ -36,7 +57,8 @@ def main(args_i):
         args.width = 256
     model = imagemodel.ImageModel(nheads=args.nheads, outs=args.t, classifacation=args.classifacation, dr=0.,
                                   intermediate_rep=args.width, linear_layers=args.depth, pretrain=False)
-    model.load_state_dict(torch.load(file, map_location='cpu')['model_state'])
+    model.load_state_dict(torch.load(modelfile, map_location='cpu')['model_state'])
+    model = model.to(device)
     model.eval()
     
     # convert to half if requested
@@ -46,33 +68,44 @@ def main(args_i):
     # convert to trt if requested
     if args_i.trt is not None:
         import tensorrt as trt
-        from torch2trt import torch2trt
-        # dummy input
-        inp = torch.ones((1, 3, 128, 128)).to(device)
-        if args_i.dtype == "fp16":
-            inp = inp.half()
-            cal_dset = torch.utils.data.Subset(dset, list(range(0, args_i.b * args_i.num_calibration_batches)))
+        from torch2trt import torch2trt, TRTModule
 
-        # generate trt model
-        model_trt = torch2trt(model, [inp],
-                              log_level=trt.Logger.INFO,
-                              max_workspace_size=1<<26,
-                              fp16_mode=True if args_i.dtype == "fp16" else False,
-                              int8_mode=True if args_i.dtype == "int8" else False,
-                              int8_calib_dataset = cal_dset if args_i.dtype == "int8" else None,
-                              max_batch_size=args_i.b)
+        # check if model exists:
+        if os.path.isfile(args_i.trt):
+            if comm_rank == 0:
+                print("Loading TRT model")
+            model_trt = TRTModule()
+            model_trt.load_state_dict(torch.load(args_i.trt))
 
-        # save trt model
-        torch.save(model_trt.state_dict(), args_i.trt)
+        else:
+            if comm_rank == 0:
+                print("Generating TRT model")
+
+            # dummy input
+            inp = torch.ones((1, 3, 128, 128)).to(device)
+            if args_i.dtype == "fp16":
+                inp = inp.half()
+                cal_dset = torch.utils.data.Subset(dset, list(range(0, args_i.b * args_i.num_calibration_batches)))
+
+            # generate trt model
+            model_trt = torch2trt(model, [inp],
+                                  log_level=trt.Logger.INFO,
+                                  max_workspace_size=1<<26,
+                                  fp16_mode=True if args_i.dtype == "fp16" else False,
+                                  int8_mode=True if args_i.dtype == "int8" else False,
+                                  int8_calib_dataset = cal_dset if args_i.dtype == "int8" else None,
+                                  max_batch_size=args_i.b)
+
+            # save trt model
+            torch.save(model_trt.state_dict(), args_i.trt)
 
     # pick the FW pass model
     model_fw = model_trt if args_i.trt is not None else model
 
-    exit
-
+    # do the inference step
     with torch.no_grad():
-        with tqdm(total=len(train_loader), unit='samples') as pbar:
-            for i, (im, smile) in enumerate(train_loader):
+        with tqdm(unit='samples') as pbar:
+            for i, (im, identifier) in enumerate(train_loader):
                 
                 # convert to half if requested
                 if args_i.dtype == "fp16":

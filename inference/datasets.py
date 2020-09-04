@@ -38,10 +38,13 @@ class CompressedImageDataset(IterableDataset):
         self.max_prefetch_count = max_prefetch_count
         
         # get filelist
-        self.filelist = glob.glob(self.globstring)
+        self.filelist = sorted(glob.glob(self.globstring))
         
         # set queue to not initialized
         self.initialized = False
+
+    def __len__(self):
+        return len(self.filelist)
 
     def _init_queue(self):
         # truncate file list with start and end
