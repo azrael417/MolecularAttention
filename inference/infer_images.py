@@ -31,6 +31,7 @@ def main(args_i):
     # set model
     modelfile = args_i.m
     args = torch.load(modelfile, map_location=torch.device('cpu'))['args']
+
     if args.width is None:
         args.width = 256
     model = imagemodel.ImageModel(nheads=args.nheads, outs=args.t, classifacation=args.classifacation, dr=0.,

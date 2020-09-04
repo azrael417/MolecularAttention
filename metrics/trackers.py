@@ -1,10 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
-import sklearn
+from sklearn import metrics
 
 
 class ComplexPytorchHistory:
-    def __init__(self, metric=sklearn.metrics.r2_score, metric_name='r2', classifacation=False):
+    def __init__(self, metric=metrics.r2_score, metric_name='r2', classifacation=False):
         self.train_loss = []
         self.test_loss = []
         self.train_r2 = []
@@ -89,7 +89,7 @@ class ComplexPytorchHistory:
 
 
 class PytorchHistory:
-    def __init__(self, metric=sklearn.metrics.r2_score, metric_name='r2'):
+    def __init__(self, metric=metrics.r2_score, metric_name='r2'):
         self.train_loss = []
         self.test_loss = []
         self.train_r2 = []
