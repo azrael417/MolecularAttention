@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # devid
-device=${OMPI_COMM_WORLD_LOCAL_RANK}
+device=${OMPI_COMM_WORLD_LOCAL_RANK:=0}
 
 # unimproved run
 python infer_images.py \
@@ -10,8 +10,8 @@ python infer_images.py \
     -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.trt \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
     -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.pt \
-    -b 256 -j 4 -dtype=fp16 \
-    -num_calibration_batches=10
+    -b 256 -j 0 -dtype=fp16 \
+    -num_calibration_batches=10 ${1}
 
 #python infer_q.py \
 #       -i /data/molecular_attention/smiles.smi \

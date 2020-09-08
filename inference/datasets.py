@@ -1,17 +1,23 @@
 import numpy as np
 import pickle
-import glob
 import gzip as zip
 import pickle
+import io
 
 #threading and queue
 import threading, queue
 
 # torch stuff
 import torch
+from torchvision import transforms
 from torch.utils.data import IterableDataset
 from PIL import Image
 #import torchvision
+
+# rdkit
+from rdkit import Chem
+from rdkit.Chem import rdDepictor
+from rdkit.Chem.Draw import rdMolDraw2D
 
 def shard_init_fn(worker_id):
     worker_info = torch.utils.data.get_worker_info()
@@ -27,19 +33,43 @@ def shard_init_fn(worker_id):
     dataset.end = min(dataset.start + per_worker, overall_end)
 
 
-class CompressedImageDataset(IterableDataset):
+def smiles_to_image(mol, molSize=(128, 128), kekulize = True, mol_name = '', mol_computed = True):
+    if not mol_computed:
+        mol = Chem.MolFromSmiles(mol)
+    mc = Chem.Mol(mol.ToBinary())
+    if kekulize:
+        try:
+            Chem.Kekulize(mc)
+        except:
+            mc = Chem.Mol(mol.ToBinary())
+    if not mc.GetNumConformers():
+        rdDepictor.Compute2DCoords(mc)
+    # print('mol', mol)
+    drawer = rdMolDraw2D.MolDraw2DCairo(molSize[0], molSize[1])
+    drawer.DrawMolecule(mc)
+    drawer.FinishDrawing()
+    ios = drawer.GetDrawingText()
+    iosb = io.BytesIO(ios)
+    image = Image.open(iosb)
+    image.convert('RGB')
+    return image
+
+
+class CompressedMoleculesDataset(IterableDataset):
     
-    def __init__(self, globstring, start = 0, end = -1,
+    def __init__(self, filelist, start = 0, end = -1,
+                 encoding = "images",
                  max_prefetch_count = 5):
         # store arguments
-        self.globstring = globstring
+        self.filelist = filelist
+        self.encoding = encoding
         self.start = start
         self.end = end
         self.max_prefetch_count = max_prefetch_count
-        
-        # get filelist
-        self.filelist = sorted(glob.glob(self.globstring))
-        
+                
+        # set image transform
+        self.transform = transforms.ToTensor()
+
         # set queue to not initialized
         self.initialized = False
 
@@ -55,7 +85,6 @@ class CompressedImageDataset(IterableDataset):
 
         # lock logic
         self.prefetch_lock = threading.Lock()
-        self.prefetch_done = threading.Event()
         self.prefetch_stop = False
         
         # start prefetch
@@ -73,7 +102,7 @@ class CompressedImageDataset(IterableDataset):
     def _get_file(self, fname):
         with zip.open(fname, mode='rb') as z:
             data = pickle.loads(z.read())
-        return data
+        return (fname, data)
 
     def _prefetch(self):
         for fname in self.filelist:
@@ -89,12 +118,15 @@ class CompressedImageDataset(IterableDataset):
         if not self.initialized:
             self._init_queue()
         
-        while not self.prefetch_done.is_set():
-            data = self.prefetch_queue.get()
+        for _ in range(len(self.filelist)):
+            fname, data = self.prefetch_queue.get()
+            self.prefetch_queue.task_done()
             for item in data:
                 folder = item[0]
                 identifier = item[1]
-                image = np.asarray(item[3]).copy()
-                yield image, identifier
-                
-            self.prefetch_queue.task_done()
+                if self.encoding == "images":
+                    image = self.transform(item[3])
+                else:
+                    image = smiles_to_image(item[2], mol_computed = False)
+                    image = self.transform(image)
+                yield image, identifier, fname
