@@ -124,11 +124,26 @@ def main(args_i):
     model_fw = model_trt if args_i.trt is not None else model
 
     # set up a buffer for the accumulation of samples
-    samples = np.zeros(1, dtype = np.int64)
-    inc_buffer = np.zeros(1, dtype = np.int64)
+    if have_mpi:
+        # allocate
+        samples_memory = MPI.Alloc_mem(MPI.INT64_T.size)
+        inc_memory = MPI.Alloc_mem(MPI.INT64_T.size)
+        # zero
+        samples_memory[:] = 0
+        inc_memory[:] = 0
+        # create numpy handles
+        samples = np.frombuffer(samples_memory, count = 1, dtype = np.int64)
+        inc_buffer = np.frombuffer(inc_memory, count = 1, dtype = np.int64)
+        
+    else:
+        samples = np.zeros([1], dtype = np.int64)
+        inc_buffer = np.zeros([1], dtype = np.int64)
 
     if have_mpi:
-        samples_win = MPI.Win.Create(samples, comm = comm)
+        if comm_rank == 0:
+            samples_win = MPI.Win.Create(samples, comm = comm)
+        else:
+            samples_win = MPI.Win.Create(None, comm = comm)
 
     # do the inference step
     if comm_rank == 0:
@@ -139,7 +154,6 @@ def main(args_i):
 
     if have_mpi:
         comm.barrier()
-    samples = 0
     duration = time.time()
     with torch.no_grad():
         results = []
@@ -158,36 +172,40 @@ def main(args_i):
             pred = model_fw(im)
 
             # sample counter
-            inc_buffer += pred.shape[0]
+            inc_buffer[0] += pred.shape[0]
 
-            print(comm_rank, ' ', inc_buffer)
+            #print(comm_rank, ' ', inc_buffer)
 
             # update counter and report if requested
             if (idx % args_i.update_frequency == 0):
                 if have_mpi:
                     samples_win.Lock(0, MPI.LOCK_SHARED)
-                    samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
+                    samples_win.Flush(0)
+                    samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
                     samples_win.Unlock(0)
                 else:
                     samples += inc_buffer
-                inc_buffer = 0
+                inc_buffer[0] = 0
 
                 if (comm_rank == 0):
                     if have_mpi:
-                        #lock window
+                        # lock window and flush
                         samples_win.Lock(0, MPI.LOCK_EXCLUSIVE)
-
-                    #update pbar
-                    pbar.update(np.asscalar(samples))
-
+                        samples_win.Flush(0)
+                    smp = np.asscalar(samples)
                     if have_mpi:
-                        #unlock window
-                        samples_win.Unlock(0)
+                        # unlock window
+                        samples_win.Unlock(0)     
+
+                    # update pbar
+                    pbar.update(smp)
+
         
         # final update
         if have_mpi:
             samples_win.Lock(0, MPI.LOCK_SHARED)
-            samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
+            samples_win.Flush(0)
+            samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
             samples_win.Unlock(0)
         else:
             samples += inc_buffer
@@ -197,6 +215,10 @@ def main(args_i):
     if have_mpi:
         comm.barrier()
 
+    # final update
+    if comm_rank == 0:
+        pbar.update(np.asscalar(samples))
+
     # timer
     duration = time.time() - duration
 
@@ -205,7 +227,13 @@ def main(args_i):
     
     if comm_rank == 0:
         print(f"Processed {samples_count} samples in {duration}s, throughput {samples_count/duration} samples/s")
-                
+
+    # free stuff
+    if have_mpi:
+        samples_win.Free()
+        MPI.Free_mem(samples_memory)
+        MPI.Free_mem(inc_memory)
+
 
 if __name__ == "__main__":
     parser = ArgumentParser()
@@ -216,7 +244,7 @@ if __name__ == "__main__":
     parser.add_argument('-dtype', type=str, choices=["fp32", "fp16", "int8"], required=False)
     parser.add_argument('-num_calibration_batches', type=int, default=1000, required=False)
     parser.add_argument('--distributed', action='store_true')
-    parser.add_argument('--update_frequency', type=int, required=False, default=100)
+    parser.add_argument('--update_frequency', type=int, required=False, default=5)
     parser.add_argument('-d', type=int, required=False, default=0)
     parser.add_argument('-j', type=int, required=False, default=1)
     parser.add_argument('-b', type=int, required=False, default=64)

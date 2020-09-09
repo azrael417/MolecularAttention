@@ -4,7 +4,7 @@
 device=${OMPI_COMM_WORLD_LOCAL_RANK:=0}
 
 # unimproved run
-python infer_images.py \
+python -u infer_images.py \
     -d ${device} \
     -i "/gpfs/alpine/proj-shared/med110/cov19_data/*/*.pkl.gz" \
     -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.trt \
