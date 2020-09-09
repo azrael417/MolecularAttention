@@ -184,7 +184,7 @@ def main(args_i):
                     samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
                     samples_win.Unlock(0)
                 else:
-                    samples += inc_buffer
+                    samples[0] += inc_buffer[0]
                 inc_buffer[0] = 0
 
                 if (comm_rank == 0):
@@ -208,8 +208,8 @@ def main(args_i):
             samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
             samples_win.Unlock(0)
         else:
-            samples += inc_buffer
-        inc_buffer = 0
+            samples[0] += inc_buffer[0]
+        inc_buffer[0] = 0
 
     # sync
     if have_mpi:
