@@ -2,7 +2,8 @@ import numpy as np
 import pickle
 import gzip as zip
 import pickle
-import io
+import sys
+import os
 
 #threading and queue
 import threading, queue
@@ -12,12 +13,10 @@ import torch
 from torchvision import transforms
 from torch.utils.data import IterableDataset
 from PIL import Image
-#import torchvision
 
-# rdkit
-from rdkit import Chem
-from rdkit.Chem import rdDepictor
-from rdkit.Chem.Draw import rdMolDraw2D
+# feature gen
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from features.generateFeatures import smiles_to_image
 
 def shard_init_fn(worker_id):
     worker_info = torch.utils.data.get_worker_info()
@@ -31,28 +30,6 @@ def shard_init_fn(worker_id):
     worker_id = worker_info.id
     dataset.start = overall_start + worker_id * per_worker
     dataset.end = min(dataset.start + per_worker, overall_end)
-
-
-def smiles_to_image(mol, molSize=(128, 128), kekulize = True, mol_name = '', mol_computed = True):
-    if not mol_computed:
-        mol = Chem.MolFromSmiles(mol)
-    mc = Chem.Mol(mol.ToBinary())
-    if kekulize:
-        try:
-            Chem.Kekulize(mc)
-        except:
-            mc = Chem.Mol(mol.ToBinary())
-    if not mc.GetNumConformers():
-        rdDepictor.Compute2DCoords(mc)
-    # print('mol', mol)
-    drawer = rdMolDraw2D.MolDraw2DCairo(molSize[0], molSize[1])
-    drawer.DrawMolecule(mc)
-    drawer.FinishDrawing()
-    ios = drawer.GetDrawingText()
-    iosb = io.BytesIO(ios)
-    image = Image.open(iosb)
-    image.convert('RGB')
-    return image
 
 
 class CompressedMoleculesDataset(IterableDataset):

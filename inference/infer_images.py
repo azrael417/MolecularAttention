@@ -4,7 +4,7 @@ import glob
 import time
 import numpy as np
 from argparse import ArgumentParser
-from progressbar import ProgressBar, Bar, Counter, AdaptiveTransferSpeed
+from progressbar import ProgressBar, Bar, Counter, Timer, AdaptiveTransferSpeed, UnknownLength
 
 # torch stuff
 import torch
@@ -54,7 +54,8 @@ def main(args_i):
         print(f"Found {totalsize} files. Deploying about {shardsize} per rank.")
 
     # get data loader
-    dset = CompressedMoleculesDataset(filelist, start, end, encoding = "smiles", max_prefetch_count = 3)
+    dset = CompressedMoleculesDataset(filelist, start, end, \
+                                      encoding = "images", max_prefetch_count = 3)
 
     # shard dataset
     totalsize = len(dset)
@@ -124,32 +125,21 @@ def main(args_i):
     model_fw = model_trt if args_i.trt is not None else model
 
     # set up a buffer for the accumulation of samples
-    if have_mpi:
-        # allocate
-        samples_memory = MPI.Alloc_mem(MPI.INT64_T.size)
-        inc_memory = MPI.Alloc_mem(MPI.INT64_T.size)
-        # zero
-        samples_memory[:] = 0
-        inc_memory[:] = 0
-        # create numpy handles
-        samples = np.frombuffer(samples_memory, count = 1, dtype = np.int64)
-        inc_buffer = np.frombuffer(inc_memory, count = 1, dtype = np.int64)
-        
-    else:
-        samples = np.zeros([1], dtype = np.int64)
-        inc_buffer = np.zeros([1], dtype = np.int64)
+    samples_buffer = np.zeros([1], dtype = np.int64)
+    inc_buffer = np.zeros([1], dtype = np.int64)
 
     if have_mpi:
         if comm_rank == 0:
-            samples_win = MPI.Win.Create(samples, comm = comm)
+            samples_win = MPI.Win.Create(samples_buffer, comm = comm)
         else:
             samples_win = MPI.Win.Create(None, comm = comm)
 
     # do the inference step
     if comm_rank == 0:
         print("Starting Inference")
-        widgets = ['Running: ', Counter(), ' ', Bar(marker='#',left='[',right=']'), ' ', AdaptiveTransferSpeed(), ' samples/s']
-        pbar = ProgressBar(widgets = widgets)
+        widgets = ['Running: ', Counter(), ' ', \
+                   AdaptiveTransferSpeed(prefix='', unit='samples'), ' ', Timer()]
+        pbar = ProgressBar(widgets = widgets, max_value = UnknownLength)
         pbar.start()
 
     if have_mpi:
@@ -181,7 +171,7 @@ def main(args_i):
                 if have_mpi:
                     samples_win.Lock(0, MPI.LOCK_SHARED)
                     samples_win.Flush(0)
-                    samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
+                    samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
                     samples_win.Unlock(0)
                 else:
                     samples[0] += inc_buffer[0]
@@ -192,7 +182,7 @@ def main(args_i):
                         # lock window and flush
                         samples_win.Lock(0, MPI.LOCK_EXCLUSIVE)
                         samples_win.Flush(0)
-                    smp = np.asscalar(samples)
+                    smp = np.asscalar(samples_buffer)
                     if have_mpi:
                         # unlock window
                         samples_win.Unlock(0)     
@@ -205,7 +195,7 @@ def main(args_i):
         if have_mpi:
             samples_win.Lock(0, MPI.LOCK_SHARED)
             samples_win.Flush(0)
-            samples_win.Accumulate([inc_buffer.tobytes(), MPI.INT64_T], 0, op=MPI.SUM)
+            samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
             samples_win.Unlock(0)
         else:
             samples[0] += inc_buffer[0]
@@ -217,13 +207,13 @@ def main(args_i):
 
     # final update
     if comm_rank == 0:
-        pbar.update(np.asscalar(samples))
+        pbar.update(np.asscalar(samples_buffer))
 
     # timer
     duration = time.time() - duration
 
     # get samples
-    samples_count = np.asscalar(samples)
+    samples_count = np.asscalar(samples_buffer)
     
     if comm_rank == 0:
         print(f"Processed {samples_count} samples in {duration}s, throughput {samples_count/duration} samples/s")
@@ -236,6 +226,11 @@ def main(args_i):
 
 
 if __name__ == "__main__":
+
+    # do this here
+    torch.multiprocessing.set_start_method('forkserver')
+
+    # parse args
     parser = ArgumentParser()
     parser.add_argument('-m', type=str, required=True)
     parser.add_argument('-i', type=str, required=True)
