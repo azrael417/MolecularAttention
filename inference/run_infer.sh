@@ -13,6 +13,7 @@ python -u infer_images.py \
     -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.trt \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
     -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.pt \
+    --output_frequency 2000 \
     -b 256 -j 12 -dtype=fp16 \
     -num_calibration_batches=10 ${1}
 

@@ -89,7 +89,6 @@ class CompressedMoleculesDataset(IterableDataset):
             with self.prefetch_lock:
                 if self.prefetch_stop:
                     return
-        self.prefetch_done.set()
         return
             
     def __iter__(self):
