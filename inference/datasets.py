@@ -66,7 +66,7 @@ class CompressedMoleculesDataset(IterableDataset):
         self.prefetch_stop = False
         
         # start prefetch
-        self.prefetch_thread = threading.Thread(target=self._prefetch)
+        self.prefetch_thread = threading.Thread(target = self._prefetch)
         self.prefetch_thread.start()
 
 
@@ -89,8 +89,7 @@ class CompressedMoleculesDataset(IterableDataset):
             with self.prefetch_lock:
                 if self.prefetch_stop:
                     return
-        return
-            
+    
     def __iter__(self):
         if not self.initialized:
             self._init_queue()
