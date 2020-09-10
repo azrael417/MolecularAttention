@@ -5,6 +5,7 @@ import time
 import numpy as np
 from argparse import ArgumentParser
 from progressbar import ProgressBar, Bar, Counter, Timer, AdaptiveTransferSpeed, UnknownLength
+import pandas as pd
 
 # torch stuff
 import torch
@@ -64,7 +65,7 @@ def main(args_i):
     dset.end = min([dset.start + shardsize, totalsize])
 
     # create train loader
-    train_loader = DataLoader(dset, num_workers = args_i.j,
+    infer_loader = DataLoader(dset, num_workers = args_i.j,
                               pin_memory = True,
                               batch_size = args_i.b,
                               shuffle = False,
@@ -134,20 +135,27 @@ def main(args_i):
         else:
             samples_win = MPI.Win.Create(None, comm = comm)
 
-    # do the inference step
+    # some last things we want to setup
     if comm_rank == 0:
         print("Starting Inference")
+        # create output dir if not exists
+        if not os.path.isdir(args_i.o):
+            os.makedirs(args_i.o, exist_ok = True)
+        # set up progress bar
         widgets = ['Running: ', Counter(), ' ', \
                    AdaptiveTransferSpeed(prefix='', unit='samples'), ' ', Timer()]
         pbar = ProgressBar(widgets = widgets, max_value = UnknownLength)
         pbar.start()
 
+    # do the inference step
     if have_mpi:
         comm.barrier()
+    samples_io_start = 0
+    samples_io_end = 0
     duration = time.time()
     with torch.no_grad():
         results = []
-        for idx, (im, identifier, fname) in enumerate(train_loader):
+        for idx, (im, identifier, fname, fidx) in enumerate(infer_loader):
                 
             # convert to half if requested
             if args_i.dtype == "fp16":
@@ -160,11 +168,20 @@ def main(args_i):
                 
             # forward pass
             pred = model_fw(im)
+            npred = np.squeeze(pred.cpu().numpy())
 
             # sample counter
             inc_buffer[0] += pred.shape[0]
+            samples_io_end += pred.shape[0]
 
-            #print(comm_rank, ' ', inc_buffer)
+            # fill and append data frame
+            results.append(pd.DataFrame({"scores": npred, "identifier": identifier, "filename": fname, "fileindex": fidx}))
+
+            # write file: we skip the idx = 0 one
+            if ((idx + 1) % args_i.output_frequency == 0):
+                pd.concat(results).to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
+                samples_io_start = samples_io_end
+                results = []
 
             # update counter and report if requested
             if (idx % args_i.update_frequency == 0):
@@ -186,7 +203,7 @@ def main(args_i):
                     if have_mpi:
                         # unlock window
                         samples_win.Unlock(0)     
-
+                        
                     # update pbar
                     pbar.update(smp)
 
@@ -204,6 +221,12 @@ def main(args_i):
     # sync
     if have_mpi:
         comm.barrier()
+        
+    # final IO
+    if results:
+        pd.concat(results).to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
+        samples_io_start = samples_io_end
+        results = []
 
     # final update
     if comm_rank == 0:
@@ -221,8 +244,6 @@ def main(args_i):
     # free stuff
     if have_mpi:
         samples_win.Free()
-        MPI.Free_mem(samples_memory)
-        MPI.Free_mem(inc_memory)
 
 
 if __name__ == "__main__":
@@ -232,14 +253,15 @@ if __name__ == "__main__":
 
     # parse args
     parser = ArgumentParser()
-    parser.add_argument('-m', type=str, required=True)
-    parser.add_argument('-i', type=str, required=True)
+    parser.add_argument('-m', type=str, required=True, help='input directory for model')
+    parser.add_argument('-i', type=str, required=True, help='input glob string for data')
     parser.add_argument('-o', type=str, required=True)
     parser.add_argument('-trt', type=str, required=False, default=None)
     parser.add_argument('-dtype', type=str, choices=["fp32", "fp16", "int8"], required=False)
     parser.add_argument('-num_calibration_batches', type=int, default=1000, required=False)
     parser.add_argument('--distributed', action='store_true')
     parser.add_argument('--update_frequency', type=int, required=False, default=5)
+    parser.add_argument('--output_frequency', type=int, required=False, default=20)
     parser.add_argument('-d', type=int, required=False, default=0)
     parser.add_argument('-j', type=int, required=False, default=1)
     parser.add_argument('-b', type=int, required=False, default=64)

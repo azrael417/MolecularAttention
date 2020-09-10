@@ -1,19 +1,10 @@
 #!/bin/bash
 
-# stagein
-stagein=1
-
 # devid
 device=${OMPI_COMM_WORLD_LOCAL_RANK:=0}
 
+# data root
 data_root="/gpfs/alpine/proj-shared/med110/cov19_data"
-if [ "${stagein}" == "1" ]; then
-    if [ "${device}" == "0" ]; then
-	mkdir -p /tmp/tkurth/cov19_data/
-	rsync -rva ${data_root}/* /tmp/tkurth/cov19_data/
-    fi
-    data_root="/tmp/tkurth/cov19_data"
-fi
 
 # unimproved run
 python -u infer_images.py \
@@ -22,7 +13,7 @@ python -u infer_images.py \
     -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.trt \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
     -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.pt \
-    -b 256 -j 8 -dtype=fp16 \
+    -b 256 -j 12 -dtype=fp16 \
     -num_calibration_batches=10 ${1}
 
 #python infer_q.py \

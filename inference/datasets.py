@@ -4,6 +4,7 @@ import gzip as zip
 import pickle
 import sys
 import os
+from shutil import copyfile
 
 #threading and queue
 import threading, queue
@@ -98,7 +99,7 @@ class CompressedMoleculesDataset(IterableDataset):
         for _ in range(len(self.filelist)):
             fname, data = self.prefetch_queue.get()
             self.prefetch_queue.task_done()
-            for item in data:
+            for fidx, item in enumerate(data):
                 folder = item[0]
                 identifier = item[1]
                 if self.encoding == "images":
@@ -106,4 +107,4 @@ class CompressedMoleculesDataset(IterableDataset):
                 else:
                     image = smiles_to_image(item[2], mol_computed = False)
                     image = self.transform(image)
-                yield image, identifier, fname
+                yield image, identifier, fname, fidx
