@@ -4,16 +4,18 @@
 device=${OMPI_COMM_WORLD_LOCAL_RANK:=0}
 
 # data root
-data_root="/gpfs/alpine/proj-shared/med110/cov19_data"
+#data_root="/gpfs/alpine/proj-shared/med110/cov19_data"
+data_root="/gpfs/alpine/med110/world-shared/ULT911"
 
 # unimproved run
 python -u infer_images.py \
+    -t 500 \
     -d ${device} \
-    -i "${data_root}/*/*.pkl.gz" \
-    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.trt \
+    -i "${data_root}/images_compressed/*.pkl.gz" \
+    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model_6W02.trt \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
-    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model.pt \
-    --output_frequency 2000 \
+    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model_6W02.pt \
+    --output_frequency 200 \
     -b 256 -j 12 -dtype=fp16 \
     -num_calibration_batches=10 ${1}
 

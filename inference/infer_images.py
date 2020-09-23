@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import glob
 import time
@@ -23,6 +24,18 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datasets import CompressedMoleculesDataset, shard_init_fn
 from models import imagemodel
 
+
+def write_ligand_files(filename, df, file_per_ligand = False):
+    ## create list out of results
+    #reslist = list(zip(*map(df.get, ['smiles', 'identifier'])))
+    #if not file_per_ligand:
+    #    with open(filename, "w") as f:
+    #        f.write('\n'.join('%s %s' % x for x in reslist))
+
+    # save to csv
+    df.to_csv(filename)
+
+    print(f"Wrote ligands to {filename}.")
 
 def main(args_i):
 
@@ -60,7 +73,8 @@ def main(args_i):
 
     # shard dataset
     totalsize = len(dset)
-    shardsize = int(np.ceil(totalsize / comm_size))
+    #shardsize = int(np.ceil(totalsize / comm_size))
+    shardsize = 5
     dset.start = comm_rank * shardsize
     dset.end = min([dset.start + shardsize, totalsize])
 
@@ -74,6 +88,8 @@ def main(args_i):
     
     # set model
     modelfile = args_i.m
+    match = re.match(r".*?model_(.*?).pt", args_i.m)
+    receptor_id = "N/A" if match is not None else match.groups[0]
     args = torch.load(modelfile, map_location=torch.device('cpu'))['args']
 
     if args.width is None:
@@ -153,9 +169,12 @@ def main(args_i):
     samples_io_start = 0
     samples_io_end = 0
     duration = time.time()
+    
+    # store results in df too
+    resultdf = []
     with torch.no_grad():
         results = []
-        for idx, (im, identifier, fname, fidx) in enumerate(infer_loader):
+        for idx, (im, smiles, identifier, fname, fidx) in enumerate(infer_loader):
                 
             # convert to half if requested
             if args_i.dtype == "fp16":
@@ -175,13 +194,21 @@ def main(args_i):
             samples_io_end += pred.shape[0]
 
             # fill and append data frame
-            results.append(pd.DataFrame({"scores": npred, "identifier": identifier, "filename": fname, "fileindex": fidx}))
+            results.append(pd.DataFrame({"score": npred, 
+                                         "smiles": smiles, 
+                                         "identifier": identifier, 
+                                         "receptor": receptor_id,
+                                         "filename": fname, 
+                                         "fileindex": fidx}))
 
             # write file: we skip the idx = 0 one
             if ((idx + 1) % args_i.output_frequency == 0):
-                pd.concat(results).to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
+                tmpdf = pd.concat(results).sort_values(by=['score'], ascending=False).reset_index(drop=True)
+                if args_i.write_intermediate_files:
+                    tmpdf.to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
                 samples_io_start = samples_io_end
                 results = []
+                resultdf.append(tmpdf)
 
             # update counter and report if requested
             if (idx % args_i.update_frequency == 0):
@@ -224,9 +251,12 @@ def main(args_i):
         
     # final IO
     if results:
-        pd.concat(results).to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
+        tmpdf = pd.concat(results).sort_values(by=['score'], ascending=False).reset_index(drop=True)
+        if args_i.write_intermediate_files:
+            tmpdf.to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
         samples_io_start = samples_io_end
         results = []
+        resultdf.append(tmpdf)
 
     # final update
     if comm_rank == 0:
@@ -241,6 +271,28 @@ def main(args_i):
     if comm_rank == 0:
         print(f"Processed {samples_count} samples in {duration}s, throughput {samples_count/duration} samples/s")
 
+    # concat and rank
+    resultdf = pd.concat(resultdf).sort_values(by=['score'], ascending=False).reset_index(drop=True)
+
+    # take the top n
+    if args_i.t > 0:
+        projdf = resultdf.nlargest(args_i.t, columns=["score"], keep="all").copy()
+    else:
+        projdf = resultdf.copy()
+
+    # gather pandas frames from all nodes:
+    allresults = comm.gather(projdf, 0)
+
+    if comm_rank == 0:
+        gresultdf = pd.concat(allresults).nlargest(args_i.t, columns=["score"], keep="all").reset_index(drop=True)
+
+        # write output
+        filename = os.path.join(args_i.o, f"top-{args_i.t}_ligand.csv")
+        write_ligand_files(filename, gresultdf, file_per_ligand = False)
+
+    # wait for node 0
+    comm.barrier()
+        
     # free stuff
     if have_mpi:
         samples_win.Free()
@@ -262,6 +314,8 @@ if __name__ == "__main__":
     parser.add_argument('--distributed', action='store_true')
     parser.add_argument('--update_frequency', type=int, required=False, default=5)
     parser.add_argument('--output_frequency', type=int, required=False, default=20)
+    parser.add_argument('--write_intermediate_files', type=bool, required=False, default=False)
+    parser.add_argument('-t', type=int, required=False, default=-1)
     parser.add_argument('-d', type=int, required=False, default=0)
     parser.add_argument('-j', type=int, required=False, default=1)
     parser.add_argument('-b', type=int, required=False, default=64)

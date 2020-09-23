@@ -100,9 +100,10 @@ class CompressedMoleculesDataset(IterableDataset):
             for fidx, item in enumerate(data):
                 folder = item[0]
                 identifier = item[1]
+                smiles = item[2]
                 if self.encoding == "images":
                     image = self.transform(item[3])
                 else:
-                    image = smiles_to_image(item[2], mol_computed = False)
+                    image = smiles_to_image(smiles, mol_computed = False)
                     image = self.transform(image)
-                yield image, identifier, fname, fidx
+                yield image, smiles, identifier, fname, fidx
