@@ -115,7 +115,8 @@ def main(args_i):
         print(f"Found {totalsize} files. Deploying about {shardsize} per rank.")
 
     #debug
-    filelist = filelist[:10]
+    #filelist = filelist[:10]
+    #debug
     stage_handles = []
     if args_i.stage_dir is not None:
         if comm_rank == 0:
