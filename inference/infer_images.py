@@ -3,10 +3,14 @@ import re
 import sys
 import glob
 import time
+import tempfile
+import itertools
 import numpy as np
 from argparse import ArgumentParser
 from progressbar import ProgressBar, Bar, Counter, Timer, AdaptiveTransferSpeed, UnknownLength
 import pandas as pd
+import concurrent.futures as cf
+from shutil import copyfile
 
 # torch stuff
 import torch
@@ -24,20 +28,55 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from datasets import CompressedMoleculesDataset, shard_init_fn
 from models import imagemodel
 
+def stage_subset(target_directory, filelist, max_retry):
+    if os.path.isdir(target_directory):
+        newfilelist = []
+        for finame in filelist:
+            # construct output path:
+            bname = os.path.basename(finame)
+            foname = os.path.join(target_directory, bname)
+            retry = 0
+            while (retry < max_retry):
+                try:
+                    copyfile(finame, foname)
+                    newfilelist.append(foname)
+                    break
+                except IOError as e:
+                    retry += 1
+
+        return newfilelist
+    else:
+        return filelist
+
+def stage_files(stage_directory, filelist, max_retry = 5, num_workers = 1, executor = None):
+    handles = []
+    if os.path.isdir(stage_directory):
+        # divide into subsets:
+        fullsize = len(filelist)
+        chunksize = int(np.ceil(fullsize / num_workers))
+        for i in range(num_workers):
+            start = chunksize * i
+            end = min([start + chunksize, fullsize])
+            sublist = filelist[start:end]
+            handles.append(executor.submit(stage_subset, stage_directory, sublist, max_retry))
+        # create new list with file locations
+        newlist = [os.path.join(stage_directory, os.path.basename(f)) for f in filelist]
+    else:
+        newlist = filelist
+
+    return handles, newlist
+
 
 def write_ligand_files(filename, df, file_per_ligand = False):
-    ## create list out of results
-    #reslist = list(zip(*map(df.get, ['smiles', 'identifier'])))
-    #if not file_per_ligand:
-    #    with open(filename, "w") as f:
-    #        f.write('\n'.join('%s %s' % x for x in reslist))
-
     # save to csv
     df.to_csv(filename)
 
     print(f"Wrote ligands to {filename}.")
 
 def main(args_i):
+
+    # timer
+    setup_duration = time.time()
 
     if args_i.distributed:
         # MPI wireup
@@ -58,35 +97,36 @@ def main(args_i):
     device = torch.device(f"cuda:{args_i.d}")
     torch.backends.cudnn.benchmark = True
 
+    if comm_rank == 0:
+        # create output dir if not exists
+        if not os.path.isdir(args_i.o):
+            os.makedirs(args_i.o, exist_ok = True)
+    if have_mpi:
+        comm.barrier()
+
     # get files and shard list
     filelist = sorted(glob.glob(args_i.i))
     totalsize = len(filelist)
     shardsize = int(np.ceil(totalsize / comm_size))
     start = comm_rank * shardsize
     end = min([start + shardsize, totalsize])
+    filelist = filelist[start:end]
     if comm_rank == 0:
         print(f"Found {totalsize} files. Deploying about {shardsize} per rank.")
 
-    # get data loader
-    dset = CompressedMoleculesDataset(filelist, start, end, \
-                                      encoding = "images", max_prefetch_count = 3)
-
-    ## shard dataset
-    #totalsize = len(dset)
-    ##shardsize = int(np.ceil(totalsize / comm_size))
-    #shardsize = 5
-    #dset.start = comm_rank * shardsize
-    #dset.end = min([dset.start + shardsize, totalsize])
-
-    # create train loader
-    infer_loader = DataLoader(dset, num_workers = args_i.j,
-                              pin_memory = True,
-                              batch_size = args_i.b,
-                              shuffle = False,
-                              drop_last = False,
-                              worker_init_fn = shard_init_fn)
+    #debug
+    filelist = filelist[:10]
+    stage_handles = []
+    if args_i.stage_dir is not None:
+        if comm_rank == 0:
+            print("Starting file staging")
+        tmpdir = tempfile.TemporaryDirectory(prefix="inference", dir=args_i.stage_dir)
+        thread_executor = cf.ThreadPoolExecutor(max_workers = args_i.num_stage_workers)
+        stage_handles, filelist = stage_files(tmpdir.name, filelist, args_i.num_stage_workers, executor = thread_executor)
     
     # set model
+    if comm_rank == 0:
+        print("Starting loading model")
     modelfile = args_i.m
     match = re.match(r"^model_(.*?).pt$", os.path.basename(args_i.m))
     receptor_id = "N/A" if match is None else match.groups()[0]
@@ -99,10 +139,24 @@ def main(args_i):
     model.load_state_dict(torch.load(modelfile, map_location='cpu')['model_state'])
     model = model.to(device)
     model.eval()
+    if comm_rank == 0:
+        print("Finished loading model")
     
     # convert to half if requested
     if args_i.dtype == "fp16":
         model = model.half()
+        
+    # dataset here
+    dset = CompressedMoleculesDataset(filelist, start = 0, end = len(filelist), \
+                                      encoding = "images", max_prefetch_count = 3)
+
+    # create train loader
+    infer_loader = DataLoader(dset, num_workers = args_i.j,
+                              pin_memory = True,
+                              batch_size = args_i.b,
+                              shuffle = False,
+                              drop_last = False,
+                              worker_init_fn = shard_init_fn)
 
     # convert to trt if requested
     if args_i.trt is not None:
@@ -152,24 +206,30 @@ def main(args_i):
         else:
             samples_win = MPI.Win.Create(None, comm = comm)
 
+    # make sure data was staged:
+    if stage_handles:
+        stage_duration = time.time()
+        flist = [sh.result() for sh in stage_handles]
+        filelist = list(itertools.chain.from_iterable(flist))
+        stage_duration = time.time() - stage_duration
+        infer_loader.dataset.update_filelist(filelist, 0, len(filelist))
+
     # some last things we want to setup
     if comm_rank == 0:
         print("Starting Inference")
-        # create output dir if not exists
-        if not os.path.isdir(args_i.o):
-            os.makedirs(args_i.o, exist_ok = True)
         # set up progress bar
         widgets = ['Running: ', Counter(), ' ', \
                    AdaptiveTransferSpeed(prefix='', unit='samples'), ' ', Timer()]
         pbar = ProgressBar(widgets = widgets, max_value = UnknownLength)
         pbar.start()
 
-    # do the inference step
-    if have_mpi:
-        comm.barrier()
+    # timer
+    setup_duration = time.time() - setup_duration
+
+    # samples counter
     samples_io_start = 0
     samples_io_end = 0
-    duration = time.time()
+    inference_duration = time.time()
     
     # store results in df too
     resultdf = []
@@ -234,7 +294,6 @@ def main(args_i):
                         
                     # update pbar
                     pbar.update(smp)
-
         
         # final update
         if have_mpi:
@@ -246,11 +305,20 @@ def main(args_i):
             samples[0] += inc_buffer[0]
         inc_buffer[0] = 0
 
-    # sync
+    # timer
+    inference_duration = time.time() - inference_duration
+
+    # get perf metrics
     if have_mpi:
-        comm.barrier()
+        arr = np.array(setup_duration, dtype = np.float32)
+        setup_duration = np.asscalar(comm.allreduce(arr)) / float(comm_size)
+        arr = np.array(inference_duration, dtype = np.float32)
+        inference_duration = np.asscalar(comm.allreduce(arr)) / float(comm_size)
+        if stage_handles:
+            arr = np.array(stage_duration, dtype = np.float32)
+            stage_duration = np.asscalar(comm.allreduce(arr)) / float(comm_size)
         
-    # final IO
+    # final concat
     if results:
         tmpdf = pd.concat(results).sort_values(by=['score'], ascending=False).reset_index(drop=True)
         if args_i.write_intermediate_files:
@@ -263,14 +331,14 @@ def main(args_i):
     if comm_rank == 0:
         pbar.update(np.asscalar(samples_buffer))
 
-    # timer
-    duration = time.time() - duration
-
     # get samples
     samples_count = np.asscalar(samples_buffer)
     
     if comm_rank == 0:
-        print(f"Processed {samples_count} samples in {duration}s, throughput {samples_count/duration} samples/s")
+        print(f"Setup time: {setup_duration}s")
+        if stage_handles:
+            print(f"From this, exposed staging time: {stage_duration}s")
+        print(f"Processed {samples_count} samples in {inference_duration}s, throughput {samples_count/inference_duration} samples/s")
 
     # concat and rank
     resultdf = pd.concat(resultdf).sort_values(by=['score'], ascending=False).reset_index(drop=True)
@@ -316,6 +384,8 @@ if __name__ == "__main__":
     parser.add_argument('-m', type=str, required=True, help='input directory for model')
     parser.add_argument('-i', type=str, required=True, help='input glob string for data')
     parser.add_argument('-o', type=str, required=True)
+    parser.add_argument('--stage_dir', type=str, default=None, help='Where to stage the files')
+    parser.add_argument('--num_stage_workers', type=int, required=False, default=1)
     parser.add_argument('-trt', type=str, required=False, default=None)
     parser.add_argument('-dtype', type=str, choices=["fp32", "fp16", "int8"], required=False)
     parser.add_argument('-num_calibration_batches', type=int, default=1000, required=False)

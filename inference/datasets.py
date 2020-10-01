@@ -36,6 +36,7 @@ def shard_init_fn(worker_id):
 class CompressedMoleculesDataset(IterableDataset):
     
     def __init__(self, filelist, start = 0, end = -1,
+                 max_retry_count = 5,
                  encoding = "images",
                  max_prefetch_count = 5):
         # store arguments
@@ -43,6 +44,7 @@ class CompressedMoleculesDataset(IterableDataset):
         self.encoding = encoding
         self.start = start
         self.end = end
+        self.max_retry_count = max_retry_count
         self.max_prefetch_count = max_prefetch_count
                 
         # set image transform
@@ -51,12 +53,23 @@ class CompressedMoleculesDataset(IterableDataset):
         # set queue to not initialized
         self.initialized = False
 
+    def update_filelist(self, filelist, start = 0, end = -1):
+        if not self.initialized:
+            self.start = start
+            self.end = end
+            self.filelist = filelist
+        else:
+            raise RuntimeError("Error, you cannot change the file list while the prefetcher is running")
+
     def __len__(self):
         return len(self.filelist)
 
     def _init_queue(self):
         # truncate file list with start and end
         self.filelist = self.filelist[self.start:self.end]
+        self.file_queue = queue.Queue()
+        for fname in self.filelist:
+            self.file_queue.put((fname, 0))
 
         # set up queue
         self.prefetch_queue = queue.Queue(maxsize = self.max_prefetch_count)
@@ -82,15 +95,26 @@ class CompressedMoleculesDataset(IterableDataset):
             with zip.open(fname, mode='rb') as z:
                 data = pickle.loads(z.read())
         except:
-            print(f"Unable to open file {fname}.")
             data = None
         return (fname, data)
 
-    def _prefetch(self):
-        for fname in self.filelist:
+    def _prefetch(self): 
+        while not self.file_queue.empty():
+            fname, retry_count = self.file_queue.get()
             token = self._get_file(fname)
             if token[1] is not None:
                 self.prefetch_queue.put(token)
+            else:
+                retry_count += 1
+                if retry_count < self.max_retry_count:
+                    # requeue
+                    self.file_queue.put((fname, retry_count))
+                else:
+                    # error here
+                    print(f"Error, unable to open {fname} after {retry_count} retries.")
+                    # emplace nevertheless, check later
+                    self.prefetch_queue.put(token)
+            self.file_queue.task_done()
             with self.prefetch_lock:
                 if self.prefetch_stop:
                     return
@@ -102,13 +126,14 @@ class CompressedMoleculesDataset(IterableDataset):
         for _ in range(len(self.filelist)):
             fname, data = self.prefetch_queue.get()
             self.prefetch_queue.task_done()
-            for fidx, item in enumerate(data):
-                folder = item[0]
-                identifier = item[1]
-                smiles = item[2]
-                if self.encoding == "images":
-                    image = self.transform(item[3])
-                else:
-                    image = smiles_to_image(smiles, mol_computed = False)
-                    image = self.transform(image)
-                yield image, smiles, identifier, fname, fidx
+            if data is not None:
+                for fidx, item in enumerate(data):
+                    folder = item[0]
+                    identifier = item[1]
+                    smiles = item[2]
+                    if self.encoding == "images":
+                        image = self.transform(item[3])
+                    else:
+                        image = smiles_to_image(smiles, mol_computed = False)
+                        image = self.transform(image)
+                    yield image, smiles, identifier, fname, fidx

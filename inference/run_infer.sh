@@ -13,8 +13,10 @@ python -u infer_images.py \
     -d ${device} \
     -i "${data_root}/images_compressed/*.pkl.gz" \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
-    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model_6W02.pt \
-    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model_6W02.trt \
+    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_6W02.pt \
+    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_6W02.trt \
+    --stage_dir /mnt/bb/${USER} \
+    --num_stage_workers 4 \
     --output_frequency 200 \
     -b 256 -j 12 -dtype=fp16 \
     -num_calibration_batches=10 ${1}
