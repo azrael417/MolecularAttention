@@ -71,12 +71,12 @@ def main(args_i):
     dset = CompressedMoleculesDataset(filelist, start, end, \
                                       encoding = "images", max_prefetch_count = 3)
 
-    # shard dataset
-    totalsize = len(dset)
-    #shardsize = int(np.ceil(totalsize / comm_size))
-    shardsize = 5
-    dset.start = comm_rank * shardsize
-    dset.end = min([dset.start + shardsize, totalsize])
+    ## shard dataset
+    #totalsize = len(dset)
+    ##shardsize = int(np.ceil(totalsize / comm_size))
+    #shardsize = 5
+    #dset.start = comm_rank * shardsize
+    #dset.end = min([dset.start + shardsize, totalsize])
 
     # create train loader
     infer_loader = DataLoader(dset, num_workers = args_i.j,
@@ -88,8 +88,8 @@ def main(args_i):
     
     # set model
     modelfile = args_i.m
-    match = re.match(r".*?model_(.*?).pt", args_i.m)
-    receptor_id = "N/A" if match is not None else match.groups[0]
+    match = re.match(r"^model_(.*?).pt$", os.path.basename(args_i.m))
+    receptor_id = "N/A" if match is None else match.groups()[0]
     args = torch.load(modelfile, map_location=torch.device('cpu'))['args']
 
     if args.width is None:
@@ -136,7 +136,8 @@ def main(args_i):
                                   max_batch_size=args_i.b)
 
             # save trt model
-            torch.save(model_trt.state_dict(), args_i.trt)
+            if comm_rank == 0:
+                torch.save(model_trt.state_dict(), args_i.trt)
 
     # pick the FW pass model
     model_fw = model_trt if args_i.trt is not None else model
@@ -281,10 +282,17 @@ def main(args_i):
         projdf = resultdf.copy()
 
     # gather pandas frames from all nodes:
-    allresults = comm.gather(projdf, 0)
+    if have_mpi:
+        allresults = comm.gather(projdf, 0)
+        if comm_rank == 0:
+            gresultdf = pd.concat(allresults)
+    else:
+        gresultdf = projdf
 
     if comm_rank == 0:
-        gresultdf = pd.concat(allresults).nlargest(args_i.t, columns=["score"], keep="all").reset_index(drop=True)
+        if args_i.t > 0:
+            # do one more filtering
+            gresultdf = gresultdf.nlargest(args_i.t, columns=["score"], keep="all").reset_index(drop=True)
 
         # write output
         filename = os.path.join(args_i.o, f"top-{args_i.t}_ligand.csv")

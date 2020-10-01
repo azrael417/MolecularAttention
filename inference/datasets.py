@@ -78,14 +78,19 @@ class CompressedMoleculesDataset(IterableDataset):
 
 
     def _get_file(self, fname):
-        with zip.open(fname, mode='rb') as z:
-            data = pickle.loads(z.read())
+        try:
+            with zip.open(fname, mode='rb') as z:
+                data = pickle.loads(z.read())
+        except:
+            print(f"Unable to open file {fname}.")
+            data = None
         return (fname, data)
 
     def _prefetch(self):
         for fname in self.filelist:
-            data = self._get_file(fname)
-            self.prefetch_queue.put(data)
+            token = self._get_file(fname)
+            if token[1] is not None:
+                self.prefetch_queue.put(token)
             with self.prefetch_lock:
                 if self.prefetch_stop:
                     return
