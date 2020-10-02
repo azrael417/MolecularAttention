@@ -372,12 +372,10 @@ def main(args_i):
         # write output
         filename = os.path.join(args_i.o, f"top-{args_i.t}_ligand.csv")
         write_ligand_files(filename, gresultdf, file_per_ligand = False)
-
-    # wait for node 0
-    comm.barrier()
         
     # free stuff
     if have_mpi:
+        comm.barrier()
         samples_win.Free()
 
 
