@@ -18,7 +18,8 @@ python -u infer_images.py \
     --stage_dir /mnt/bb/${USER} \
     --num_stage_workers 4 \
     --output_frequency 200 \
-    -b 256 -j 12 -dtype=fp16 \
+    --update_frequency 10 \
+    -b 256 -j 4 -dtype=fp16 \
     -num_calibration_batches=10 ${1}
 
 #-trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/model_6W02.trt \

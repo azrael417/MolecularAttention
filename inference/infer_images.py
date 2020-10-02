@@ -152,10 +152,11 @@ def main(args_i):
     # convert to half if requested
     if args_i.dtype == "fp16":
         model = model.half()
-        
+    
     # dataset here
     dset = CompressedMoleculesDataset(filelist, start = 0, end = len(filelist), \
-                                      encoding = "images", max_prefetch_count = 3)
+                                      dtype = args_i.dtype, encoding = "images", 
+                                      max_prefetch_count = 3)
 
     # create train loader
     infer_loader = DataLoader(dset, num_workers = args_i.j,
@@ -243,12 +244,6 @@ def main(args_i):
     with torch.no_grad():
         results = []
         for idx, (im, smiles, identifier, fname, fidx) in enumerate(infer_loader):
-                
-            # convert to half if requested
-            if args_i.dtype == "fp16":
-                im = im.half()
-            elif args_i.dtype == "int8":
-                im = im.to(torch.int8)
 
             # upload data
             im = im.to(device)
@@ -270,10 +265,9 @@ def main(args_i):
                                          "fileindex": fidx}))
 
             # write file: we skip the idx = 0 one
-            if ((idx + 1) % args_i.output_frequency == 0):
+            if args_i.write_intermediate_files and ((idx + 1) % args_i.output_frequency == 0):
                 tmpdf = pd.concat(results).sort_values(by=['score'], ascending=False).reset_index(drop=True)
-                if args_i.write_intermediate_files:
-                    tmpdf.to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
+                tmpdf.to_csv(os.path.join(args_i.o, f"predictions_{samples_io_start}-{samples_io_end-1}_rank-{comm_rank}.csv"))
                 samples_io_start = samples_io_end
                 results = []
                 resultdf.append(tmpdf)

@@ -37,6 +37,7 @@ class CompressedMoleculesDataset(IterableDataset):
     
     def __init__(self, filelist, start = 0, end = -1,
                  max_retry_count = 5,
+                 dtype = "fp32",
                  encoding = "images",
                  max_prefetch_count = 5):
         # store arguments
@@ -46,6 +47,13 @@ class CompressedMoleculesDataset(IterableDataset):
         self.end = end
         self.max_retry_count = max_retry_count
         self.max_prefetch_count = max_prefetch_count
+
+        # datatype
+        self.dtype = torch.float32
+        if dtype == "fp16":
+            self.dtype = torch.float16
+        elif dtype == "int8":
+            self.dtype = torch.int8
                 
         # set image transform
         self.transform = transforms.ToTensor()
@@ -132,8 +140,8 @@ class CompressedMoleculesDataset(IterableDataset):
                     identifier = item[1]
                     smiles = item[2]
                     if self.encoding == "images":
-                        image = self.transform(item[3])
+                        image = self.transform(item[3]).to(self.dtype)
                     else:
                         image = smiles_to_image(smiles, mol_computed = False)
-                        image = self.transform(image)
+                        image = self.transform(image).to(self.dtype)
                     yield image, smiles, identifier, fname, fidx
