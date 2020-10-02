@@ -73,6 +73,7 @@ def write_ligand_files(filename, df, file_per_ligand = False):
 
     print(f"Wrote ligands to {filename}.")
 
+
 def main(args_i):
 
     # timer
@@ -107,16 +108,21 @@ def main(args_i):
     # get files and shard list
     filelist = sorted(glob.glob(args_i.i))
     totalsize = len(filelist)
-    shardsize = int(np.ceil(totalsize / comm_size))
+    shardsize = totalsize // comm_size
     start = comm_rank * shardsize
-    end = min([start + shardsize, totalsize])
+    end = start + shardsize
+    # extract remainder here
+    remainder = filelist[comm_size * shardsize:]
     filelist = filelist[start:end]
+    # append remainder files
+    for idx,f in enumerate(remainder):
+        if idx == comm_rank:
+            filelist.append(f)
+    
     if comm_rank == 0:
         print(f"Found {totalsize} files. Deploying about {shardsize} per rank.")
 
-    #debug
-    #filelist = filelist[:10]
-    #debug
+    # staging
     stage_handles = []
     if args_i.stage_dir is not None:
         if comm_rank == 0:
