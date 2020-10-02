@@ -286,7 +286,7 @@ def main(args_i):
                     samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
                     samples_win.Unlock(0)
                 else:
-                    samples[0] += inc_buffer[0]
+                    samples_buffer[0] += inc_buffer[0]
                 inc_buffer[0] = 0
 
                 if (comm_rank == 0):
@@ -309,7 +309,7 @@ def main(args_i):
             samples_win.Accumulate(inc_buffer, 0, op=MPI.SUM)
             samples_win.Unlock(0)
         else:
-            samples[0] += inc_buffer[0]
+            samples_buffer[0] += inc_buffer[0]
         inc_buffer[0] = 0
 
     # timer
