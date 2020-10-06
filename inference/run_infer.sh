@@ -9,7 +9,7 @@ data_root="/gpfs/alpine/med110/world-shared/ULT911"
 
 # unimproved run
 python -u infer_images.py \
-    -t 0 \
+    -t 300000 \
     -d ${device} \
     -i "${data_root}/images_compressed/*.pkl.gz" \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \

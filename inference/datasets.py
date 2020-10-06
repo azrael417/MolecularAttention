@@ -17,7 +17,6 @@ from PIL import Image
 
 # feature gen
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from features.generateFeatures import smiles_to_image
 
 def shard_init_fn(worker_id):
     worker_info = torch.utils.data.get_worker_info()
@@ -57,6 +56,9 @@ class CompressedMoleculesDataset(IterableDataset):
                 
         # set image transform
         self.transform = transforms.ToTensor()
+
+        if not self.encoding == "images":
+            from features.generateFeatures import smiles_to_image
 
         # set queue to not initialized
         self.initialized = False

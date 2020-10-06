@@ -352,8 +352,23 @@ def main(args_i):
 
     # gather pandas frames from all nodes:
     if have_mpi:
-        allresults = comm.gather(projdf, 0)
+        fullsize = projdf.shape[0]
+        chunksize = 50000
+        numchunks = fullsize // chunksize
+        allresults = []
+        for i in range(numchunks):
+            start = i * chunksize
+            end = start + chunksize
+            partialdf = projdf.iloc[start:end, :].copy()
+            gatherresults = comm.gather(partialdf, 0)
+            if comm_rank == 0:
+                allresults += gatherresults
+        # remainder
+        partialdf = projdf.iloc[fullsize:, :].copy()
+        gatherresults = comm.gather(partialdf, 0)
         if comm_rank == 0:
+            allresults += gatherresults
+            # concat everything
             gresultdf = pd.concat(allresults)
     else:
         gresultdf = projdf
