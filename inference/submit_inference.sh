@@ -1,6 +1,6 @@
 #!/bin/bash
 #BSUB -W 120
-#BSUB -P MED110
+#BSUB -P VEN201
 #BSUB -J eval
 #BSUB -alloc_flags "NVME"
 

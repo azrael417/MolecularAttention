@@ -7,14 +7,22 @@ device=${OMPI_COMM_WORLD_LOCAL_RANK:=0}
 #data_root="/gpfs/alpine/proj-shared/med110/cov19_data"
 data_root="/gpfs/alpine/med110/world-shared/ULT911"
 
+#bindcmd:
+socket=$(( ${device} / 3 ))
+bindcmd="numactl -N $(( ${socket} * 8 ))"
+
+# openmp stuff
+export OMP_PLACES=threads
+
 # unimproved run
+${bindcmd} \
 python -u infer_images.py \
     -t 300000 \
     -d ${device} \
     -i "${data_root}/images_compressed/*.pkl.gz" \
     -o /gpfs/alpine/proj-shared/med110/cov19_data/scores \
-    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_3clpro.pt \
-    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_3clpro.trt \
+    -m /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_6W02.pt \
+    -trt /gpfs/alpine/proj-shared/med110/tkurth/attention_meta/v2/model_6W02.trt \
     --stage_dir /mnt/bb/${USER} \
     --num_stage_workers 4 \
     --output_frequency 200 \
